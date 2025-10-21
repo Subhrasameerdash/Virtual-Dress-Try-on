@@ -1,0 +1,7 @@
+{
+  "name": "Filter Studio new",
+  "description": "An application that allows users to apply artistic filters to their photos. Upload your photo and a filter image to see the magic happen with Gemini.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

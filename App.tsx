@@ -3,12 +3,14 @@ import { FilterItem, UploadedImage, TryOnItem, ClassifyingItem } from './types';
 import { virtualTryOn, classifyClothingItem } from './services/geminiService';
 import { loadCatalogueFromStorage, saveCatalogueToStorage, clearAllCataloguesFromStorage } from './utils/storage';
 import { readFileAsBase64 } from './utils/imageUtils';
-import Catalogue from './components/Catalogue';
-import ResultDisplay from './components/ResultDisplay';
-import { HeaderIcon, TryOnIcon, CameraIcon, PhotoIcon, CheckCircleIcon, TrashIcon } from './components/icons';
-import LiveTryOn from './components/LiveTryOn';
-import ImageUploader from './components/ImageUploader';
 import { FEMALE_CATALOGUE_DATA, MALE_CATALOGUE_DATA } from './constants';
+import { HeaderIcon, TrashIcon, CheckCircleIcon, ArrowLeftIcon, ArrowRightIcon } from './components/icons';
+
+// Import the new page components
+import PhotoStep from './components/BlouseColorPicker'; // Repurposed for PhotoStep
+import StyleStep from './components/TextureSelector'; // Repurposed for StyleStep
+import SelectStep from './components/SareeSelector'; // Repurposed for SelectStep
+import ResultStep from './components/ResultDisplay'; // Repurposed for ResultStep
 
 type CatalogueData = Record<string, FilterItem[]>;
 type SelectedItems = Record<string, FilterItem[]>;
@@ -16,8 +18,7 @@ type SelectedItems = Record<string, FilterItem[]>;
 // Helper function to generate all outfit combinations from selected items
 const generateOutfitCombinations = (selectedItems: SelectedItems): TryOnItem[][] => {
   const outfits: TryOnItem[][] = [];
-  const selectedCats = Object.keys(selectedItems).filter(cat => selectedItems[cat].length > 0);
-
+  
   const cartesian = <T,>(...arrays: T[][]): T[][] => {
     const nonEmptyArrays = arrays.filter(arr => arr.length > 0);
     if (nonEmptyArrays.length === 0) return [[]];
@@ -57,112 +58,118 @@ const generateOutfitCombinations = (selectedItems: SelectedItems): TryOnItem[][]
   return outfits;
 };
 
+const Stepper: React.FC<{ currentStep: number }> = ({ currentStep }) => {
+  const steps = ['Photo', 'Style', 'Select', 'Result'];
+  return (
+    <div className="flex items-center justify-center space-x-4 md:space-x-8 p-4 mb-4 md:mb-8">
+      {steps.map((name, index) => {
+        const stepNumber = index + 1;
+        const isActive = stepNumber === currentStep;
+        const isCompleted = stepNumber < currentStep;
+        return (
+          <React.Fragment key={stepNumber}>
+            <div className="flex items-center space-x-2">
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-lg font-bold transition-all duration-300 ${
+                  isActive ? 'bg-white text-black' : isCompleted ? 'bg-gray-600 text-white' : 'border-2 border-gray-600 text-gray-400'
+                }`}
+              >
+                {isCompleted ? <CheckCircleIcon className="w-5 h-5" /> : stepNumber}
+              </div>
+              <span className={`hidden md:block font-semibold ${isActive ? 'text-white' : 'text-gray-400'}`}>{name}</span>
+            </div>
+            {index < steps.length - 1 && (
+              <div className={`flex-1 h-1 rounded ${isCompleted ? 'bg-gray-600' : 'bg-gray-800'}`} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
 
 const App: React.FC = () => {
+  const [step, setStep] = useState(1);
   const [selectedImage, setSelectedImage] = useState<UploadedImage | null>(null);
   const [capturedImages, setCapturedImages] = useState<UploadedImage[]>([]);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [inputMode, setInputMode] = useState<'camera' | 'upload'>('camera');
   const [elapsedTime, setElapsedTime] = useState<number | null>(null);
   const [gender, setGender] = useState<'female' | 'male'>('female');
   const [classifyingItems, setClassifyingItems] = useState<ClassifyingItem[]>([]);
 
-  // Initialize catalogues from local storage or fall back to mock data
-  const [femaleCatalogue, setFemaleCatalogue] = useState<CatalogueData>(
-    () => loadCatalogueFromStorage('female') || FEMALE_CATALOGUE_DATA
-  );
-  const [maleCatalogue, setMaleCatalogue] = useState<CatalogueData>(
-    () => loadCatalogueFromStorage('male') || MALE_CATALOGUE_DATA
-  );
+  const [femaleCatalogue, setFemaleCatalogue] = useState<CatalogueData>(() => loadCatalogueFromStorage('female') || FEMALE_CATALOGUE_DATA);
+  const [maleCatalogue, setMaleCatalogue] = useState<CatalogueData>(() => loadCatalogueFromStorage('male') || MALE_CATALOGUE_DATA);
 
-  // Save catalogues to local storage whenever they change
-  useEffect(() => {
-    saveCatalogueToStorage('female', femaleCatalogue);
-  }, [femaleCatalogue]);
-
-  useEffect(() => {
-    saveCatalogueToStorage('male', maleCatalogue);
-  }, [maleCatalogue]);
-
-  const initialSelected: SelectedItems = {
-    outfits: [], tops: [], bottoms: [], footwear: [], headwear: [], accessories: []
-  };
+  const initialSelected: SelectedItems = { outfits: [], tops: [], bottoms: [], footwear: [], headwear: [], accessories: [] };
   const [selectedItems, setSelectedItems] = useState<SelectedItems>(initialSelected);
+
+  // --- PERSISTENCE LOGIC ---
+  useEffect(() => {
+    // Load state from sessionStorage on initial mount
+    const savedStep = sessionStorage.getItem('vto_step');
+    const savedCaptured = sessionStorage.getItem('vto_capturedImages');
+    const savedSelected = sessionStorage.getItem('vto_selectedImage');
+    const savedGenerated = sessionStorage.getItem('vto_generatedImages');
+    const savedGender = sessionStorage.getItem('vto_gender');
+
+    if (savedStep) setStep(JSON.parse(savedStep));
+    if (savedCaptured) setCapturedImages(JSON.parse(savedCaptured));
+    if (savedSelected) setSelectedImage(JSON.parse(savedSelected));
+    if (savedGenerated) setGeneratedImages(JSON.parse(savedGenerated));
+    if (savedGender) setGender(JSON.parse(savedGender));
+  }, []);
+
+  // Save state to sessionStorage whenever it changes
+  useEffect(() => { sessionStorage.setItem('vto_step', JSON.stringify(step)); }, [step]);
+  useEffect(() => { sessionStorage.setItem('vto_capturedImages', JSON.stringify(capturedImages)); }, [capturedImages]);
+  useEffect(() => { sessionStorage.setItem('vto_selectedImage', JSON.stringify(selectedImage)); }, [selectedImage]);
+  useEffect(() => { sessionStorage.setItem('vto_generatedImages', JSON.stringify(generatedImages)); }, [generatedImages]);
+  useEffect(() => { sessionStorage.setItem('vto_gender', JSON.stringify(gender)); }, [gender]);
+
+  // --- CATALOGUE MANAGEMENT ---
+  useEffect(() => { saveCatalogueToStorage('female', femaleCatalogue); }, [femaleCatalogue]);
+  useEffect(() => { saveCatalogueToStorage('male', maleCatalogue); }, [maleCatalogue]);
 
   const handleItemAdd = useCallback((item: FilterItem, category: string) => {
     const setCatalogue = gender === 'female' ? setFemaleCatalogue : setMaleCatalogue;
-    setCatalogue(prevCatalogue => ({
-      ...prevCatalogue,
-      [category]: [...(prevCatalogue[category] || []), item],
-    }));
+    setCatalogue(prev => ({ ...prev, [category]: [...(prev[category] || []), item] }));
   }, [gender]);
 
   const handleStyleUpload = useCallback(async (files: File[]) => {
     const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-    // Process files sequentially to avoid hitting API rate limits.
     for (const file of files) {
-        const tempId = `${Date.now()}-${file.name}`;
-        const fileUrl = URL.createObjectURL(file);
-        
-        // Add to the classifying list immediately for UI feedback.
-        setClassifyingItems(prev => [...prev, { id: tempId, name: file.name, url: fileUrl, error: null }]);
-        
-        try {
-            // Await the file reading and classification for each file before proceeding to the next.
-            const base64String = await readFileAsBase64(file);
-            const category = await classifyClothingItem(base64String, file.type);
-            
-            const uploadedImage: UploadedImage = {
-                base64: base64String, mimeType: file.type, url: fileUrl, name: file.name,
-            };
-            const newItem: FilterItem = {
-                id: tempId,
-                name: file.name.split('.').slice(0, -1).join('.') || 'Style Item',
-                image: uploadedImage,
-            };
-            handleItemAdd(newItem, category);
-            
-            // Remove the item from the classifying list upon successful completion.
-            setClassifyingItems(prev => prev.filter(item => item.id !== tempId));
-
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : "Classification failed.";
-            console.error(`Error processing file ${file.name}:`, err);
-            
-            // Update the item in the classifying list with an error message to inform the user.
-            setClassifyingItems(prev => 
-                prev.map(item => 
-                    item.id === tempId ? { ...item, error: errorMessage } : item
-                )
-            );
-        }
-
-        // The free tier for Gemini Flash is often limited to 15 requests per minute.
-        // This means we must wait at least 4 seconds between calls (60s / 15 = 4s).
-        // We use a 4.5-second delay to be safe.
-        await delay(4500); // 4.5-second delay
+      const tempId = `${Date.now()}-${file.name}`;
+      const fileUrl = URL.createObjectURL(file);
+      setClassifyingItems(prev => [...prev, { id: tempId, name: file.name, url: fileUrl, error: null }]);
+      try {
+        const base64String = await readFileAsBase64(file);
+        const category = await classifyClothingItem(base64String, file.type);
+        const newItem: FilterItem = {
+          id: tempId, name: file.name.split('.').slice(0, -1).join('.') || 'Style Item',
+          image: { base64: base64String, mimeType: file.type, url: fileUrl, name: file.name }
+        };
+        handleItemAdd(newItem, category);
+        setClassifyingItems(prev => prev.filter(item => item.id !== tempId));
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Classification failed.";
+        setClassifyingItems(prev => prev.map(item => item.id === tempId ? { ...item, error: errorMessage } : item));
+      }
+      await delay(4500); // Respect API rate limits
     }
   }, [handleItemAdd]);
 
   const handleImageAdd = (image: UploadedImage) => {
     setCapturedImages(prev => [image, ...prev]);
-    setSelectedImage(image);
-    setGeneratedImages([]);
-    setError(null);
-  };
-  
-  const handleSelectImage = (image: UploadedImage) => {
-    setSelectedImage(image);
+    if (!selectedImage) setSelectedImage(image); // Auto-select the first image added
+    setStep(2); // Go to next step
   };
 
   const handleReset = () => {
-    if (window.confirm("Are you sure you want to reset the session? This will remove all captured photos and clear your uploaded styles from browser storage.")) {
-      capturedImages.forEach(img => {
-        if (img.url.startsWith('blob:')) URL.revokeObjectURL(img.url);
-      });
+    if (window.confirm("Are you sure you want to reset the session? This will remove all photos and clear your uploaded styles from browser storage.")) {
+      sessionStorage.clear();
+      clearAllCataloguesFromStorage();
       setCapturedImages([]);
       setSelectedImage(null);
       setGeneratedImages([]);
@@ -170,10 +177,9 @@ const App: React.FC = () => {
       setElapsedTime(null);
       setClassifyingItems([]);
       setSelectedItems(initialSelected);
-      // Clear storage and reset catalogues to default
-      clearAllCataloguesFromStorage();
       setFemaleCatalogue(FEMALE_CATALOGUE_DATA);
       setMaleCatalogue(MALE_CATALOGUE_DATA);
+      setStep(1);
     }
   };
 
@@ -184,26 +190,23 @@ const App: React.FC = () => {
       setError(null);
     }
   };
-  
+
   const handleApplyFilter = async () => {
     if (!selectedImage) {
       setError("Please select a photo first.");
       return;
     }
-    
     const outfitsToTry = generateOutfitCombinations(selectedItems);
-
     if (outfitsToTry.length === 0) {
       setError("Please select at least one clothing item.");
       return;
     }
-
-    const hasPlaceholderItem = outfitsToTry.flat().some(item => !item.image.base64);
-    if (hasPlaceholderItem) {
-        setError("A selected style is a placeholder. Please upload real clothing items to use the try-on feature.");
-        return;
+    if (outfitsToTry.flat().some(item => !item.image.base64)) {
+      setError("A selected style is a placeholder. Please upload real clothing items.");
+      return;
     }
 
+    setStep(4); // Move to results page
     setIsLoading(true);
     setGeneratedImages([]);
     setError(null);
@@ -212,23 +215,18 @@ const App: React.FC = () => {
     
     const results: string[] = [];
     for (const outfit of outfitsToTry) {
-        try {
-            const result = await virtualTryOn(
-                selectedImage.base64,
-                selectedImage.mimeType,
-                outfit,
-                gender
-            );
-            if(result) {
-                results.push(result);
-                setGeneratedImages([...results]); // Show results as they arrive
-            }
-        } catch (err) {
-            const outfitName = outfit.map(i => i.name).join(', ');
-            setError(`Failed to generate look for: ${outfitName}. Reason: ${err instanceof Error ? err.message : 'Unknown error'}`);
-            setIsLoading(false);
-            return; // Stop on first error
+      try {
+        const result = await virtualTryOn(selectedImage.base64, selectedImage.mimeType, outfit, gender);
+        if (result) {
+          results.push(result);
+          setGeneratedImages(prev => [...prev, result]);
         }
+      } catch (err) {
+        const outfitName = outfit.map(i => i.name).join(', ');
+        setError(`Failed to generate look for: ${outfitName}. Reason: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setIsLoading(false);
+        return;
+      }
     }
 
     const endTime = performance.now();
@@ -237,85 +235,60 @@ const App: React.FC = () => {
   };
   
   const currentCatalogue = gender === 'female' ? femaleCatalogue : maleCatalogue;
-  const itemsToTryOn = Object.values(selectedItems).flat();
 
   return (
-    <div className="bg-stone-50 min-h-screen text-stone-800">
-      <header className="bg-white shadow-sm p-4 flex items-center justify-center">
-        <HeaderIcon />
-        <h1 className="text-3xl font-bold text-stone-800 ml-3">Style Studio</h1>
-      </header>
-      <main className="p-4 md:p-8 max-w-screen-2xl mx-auto">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-md h-full">
-                <h2 className="text-2xl font-bold text-stone-700 mb-4">2. Choose Your Style</h2>
-                <div className="flex justify-center mb-4 bg-gray-100 rounded-lg p-1">
-                   <button onClick={() => handleGenderChange('female')} className={`w-1/2 py-2 px-4 rounded-md text-sm font-semibold transition-colors ${gender === 'female' ? 'bg-pink-600 text-white shadow' : 'text-gray-600'}`}>Female Styles</button>
-                   <button onClick={() => handleGenderChange('male')} className={`w-1/2 py-2 px-4 rounded-md text-sm font-semibold transition-colors ${gender === 'male' ? 'bg-pink-600 text-white shadow' : 'text-gray-600'}`}>Male Styles</button>
-                </div>
-                {itemsToTryOn.length > 0 && (
-                  <div className="bg-pink-50 border-l-4 border-pink-400 p-4 rounded-md mb-4 shadow-sm animate-fade-in">
-                      <h3 className="text-lg font-bold text-stone-700 mb-3">Your Selections</h3>
-                      <div className="flex items-center gap-3 flex-wrap">
-                          {/* FIX: Add explicit type to 'item' to resolve type inference issue. */}
-                          {itemsToTryOn.map((item: FilterItem) => (
-                              <div key={item.id} className="relative w-16 h-20 rounded-md overflow-hidden border-2 border-pink-300 bg-white">
-                                  <img src={item.image.url} alt={item.name} className="w-full h-full object-cover" />
-                                  <div className="absolute bottom-0 left-0 right-0 p-0.5 bg-black bg-opacity-50">
-                                      <p className="text-white text-[10px] text-center truncate">{item.name}</p>
-                                  </div>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-                )}
-                 <Catalogue catalogue={currentCatalogue} selectedItems={selectedItems} onSelectedItemsChange={setSelectedItems} onStyleUpload={handleStyleUpload} classifyingItems={classifyingItems}/>
-            </div>
-          </div>
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-2xl font-bold text-stone-700 mb-4">1. Take or Upload Photos</h2>
-              <div className="flex justify-center mb-4 bg-gray-100 rounded-lg p-1">
-                 <button onClick={() => setInputMode('camera')} className={`w-1/2 py-2 px-4 rounded-md text-sm font-semibold transition-colors ${inputMode === 'camera' ? 'bg-pink-600 text-white shadow' : 'text-gray-600'}`}><CameraIcon className="inline-block w-5 h-5 mr-2"/>Live Camera</button>
-                 <button onClick={() => setInputMode('upload')} className={`w-1/2 py-2 px-4 rounded-md text-sm font-semibold transition-colors ${inputMode === 'upload' ? 'bg-pink-600 text-white shadow' : 'text-gray-600'}`}><PhotoIcon className="inline-block w-5 h-5 mr-2"/>Upload Photo</button>
-              </div>
-              <div className="h-[75vh] max-h-[800px] bg-stone-100 rounded-lg flex items-center justify-center">
-                {inputMode === 'camera' ? (<LiveTryOn onImageAdd={handleImageAdd} />) : (<ImageUploader onImageAdd={handleImageAdd} />)}
-              </div>
-            </div>
-          </div>
-          <div className="space-y-6 flex flex-col">
-            <div className="bg-white p-6 rounded-lg shadow-md flex-grow">
-                <h2 className="text-2xl font-bold text-stone-700 mb-4">3. Select a Picture</h2>
-                {capturedImages.length === 0 ? (
-                    <div className="bg-stone-100 rounded-lg p-6 text-center text-stone-500 h-full flex flex-col justify-center">
-                        <p>Your captured and uploaded pictures will appear here.</p>
-                        <p className="text-sm mt-1">Take a picture or upload one to get started.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-3 gap-2 max-h-[45vh] overflow-y-auto p-2 bg-stone-100 rounded-lg">
-                        {capturedImages.map((image) => (
-                            <div key={image.url} onClick={() => handleSelectImage(image)} className={`relative aspect-square cursor-pointer rounded-md overflow-hidden border-4 transition-all duration-200 ${selectedImage?.url === image.url ? 'border-pink-500 scale-105 shadow-lg' : 'border-transparent hover:border-pink-300'}`} role="button" aria-pressed={selectedImage?.url === image.url} aria-label={`Select image ${image.name}`}>
-                                <img src={image.url} alt={image.name} className="w-full h-full object-cover" />
-                                {selectedImage?.url === image.url && (<div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center"><CheckCircleIcon className="w-8 h-8 text-white opacity-90" /></div>)}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-            <button onClick={handleApplyFilter} disabled={isLoading || !selectedImage || itemsToTryOn.length === 0} className="w-full flex items-center justify-center py-4 px-6 bg-pink-600 text-white font-bold text-xl rounded-lg shadow-md hover:bg-pink-700 transition-all duration-300 transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100">
-              {isLoading ? (<><svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Styling Your Look...</>) : (<><TryOnIcon className="w-7 h-7 mr-3" />Try It On</>)}
-            </button>
-             <button onClick={handleReset} className="w-full flex items-center justify-center py-2 px-4 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
-                <TrashIcon />
-                <span className="ml-2">Reset Session & Styles</span>
-            </button>
-          </div>
+    <div className="bg-[#121212] min-h-screen text-gray-200">
+      <header className="bg-[#1f1f1f] border-b border-gray-700 p-4 flex items-center justify-between">
+        <div className="flex items-center">
+            <HeaderIcon />
+            <h1 className="text-2xl font-bold text-white ml-3">Style Studio</h1>
         </div>
-        <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold text-stone-700 mb-4">4. See Your New Look</h2>
-            <ResultDisplay isLoading={isLoading} error={error} generatedImages={generatedImages} elapsedTime={elapsedTime} />
+        <button onClick={handleReset} className="flex items-center py-2 px-4 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition-colors text-sm">
+            <TrashIcon />
+            <span className="ml-2 hidden sm:inline">Reset Session</span>
+        </button>
+      </header>
+      <main className="p-4 md:p-8 max-w-screen-lg mx-auto">
+        <Stepper currentStep={step} />
+        <div className="page-enter-active">
+          {step === 1 && <PhotoStep onImageAdd={handleImageAdd} />}
+          {step === 2 && (
+            <StyleStep
+              gender={gender}
+              onGenderChange={handleGenderChange}
+              catalogue={currentCatalogue}
+              selectedItems={selectedItems}
+              onSelectedItemsChange={setSelectedItems}
+              onStyleUpload={handleStyleUpload}
+              classifyingItems={classifyingItems}
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+              canProceed={Object.values(selectedItems).flat().length > 0}
+            />
+          )}
+          {step === 3 && (
+            <SelectStep
+              capturedImages={capturedImages}
+              selectedImage={selectedImage}
+              onSelectImage={setSelectedImage}
+              onTryOn={handleApplyFilter}
+              onBack={() => setStep(2)}
+            />
+          )}
+          {step === 4 && (
+            <ResultStep
+              isLoading={isLoading}
+              error={error}
+              generatedImages={generatedImages}
+              elapsedTime={elapsedTime}
+              onTryAgain={() => {
+                setError(null);
+                setGeneratedImages([]);
+                setStep(2);
+              }}
+              onStartOver={handleReset}
+            />
+          )}
         </div>
       </main>
     </div>

@@ -14,7 +14,6 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
 
   const stopCamera = useCallback(() => {
     if (videoRef.current) {
-        // Disconnect the stream from the video element to help release the hardware.
         videoRef.current.srcObject = null;
     }
     if (streamRef.current) {
@@ -24,7 +23,6 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
   }, []);
 
   const startCamera = useCallback(async () => {
-    // Always stop any existing stream before starting a new one.
     stopCamera();
     try {
       setError(null);
@@ -49,7 +47,6 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
           } else if (err.name === 'NotFoundError') {
               errorMessage = "No camera found. Please ensure a camera is connected.";
           } else if (err.name === 'NotReadableError') {
-              // This error often means the device is already in use.
               errorMessage = "The camera is currently in use by another application or browser tab. Please close other applications and try again.";
           }
       }
@@ -59,7 +56,6 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
 
   useEffect(() => {
     startCamera();
-    // The returned function is the cleanup function that runs when the component unmounts.
     return stopCamera;
   }, [startCamera, stopCamera]);
 
@@ -71,7 +67,6 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
       if (context) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        // Flip horizontally for a mirror effect
         context.translate(canvas.width, 0);
         context.scale(-1, 1);
         context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
@@ -82,7 +77,7 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
         onImageAdd({
           base64: base64String,
           mimeType: 'image/png',
-          url: dataUrl, // We can reuse the dataUrl, no need for blob URL here
+          url: dataUrl,
           name: `live-capture-${Date.now()}.png`
         });
       }
@@ -90,21 +85,24 @@ const LiveTryOn: React.FC<LiveTryOnProps> = ({ onImageAdd }) => {
   }, [onImageAdd]);
 
   return (
-    <div className="w-full h-full bg-gray-900 rounded-lg overflow-hidden flex flex-col justify-center items-center relative text-white">
+    <div className="w-full h-full bg-black rounded-lg overflow-hidden flex flex-col justify-center items-center relative text-white">
       <canvas ref={canvasRef} className="hidden" />
 
       <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform -scale-x-100" />
       
       {error && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col justify-center items-center p-4">
+        <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col justify-center items-center p-4">
             <p className="text-red-400 text-center">{error}</p>
+             <button onClick={startCamera} className="mt-4 py-2 px-4 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-black transition-colors">
+                Retry Camera
+            </button>
         </div>
       )}
 
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-full px-4 flex justify-center">
          <button
             onClick={handleCapture}
-            className="h-14 px-6 bg-white bg-opacity-90 text-pink-700 font-semibold rounded-lg shadow-lg flex items-center justify-center space-x-2 hover:bg-opacity-100 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-white"
+            className="h-14 px-6 bg-white text-black font-semibold rounded-lg shadow-lg flex items-center justify-center space-x-2 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-white disabled:bg-gray-600 disabled:cursor-not-allowed"
             aria-label="Capture your pose"
             disabled={!!error}
           >

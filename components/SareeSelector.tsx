@@ -1,46 +1,74 @@
 import React from 'react';
-import { FilterItem } from '../types';
-import { CheckCircleIcon } from './icons';
+import { UploadedImage } from '../types';
+import { CheckCircleIcon, ArrowLeftIcon, TryOnIcon } from './icons';
 
-interface ItemGridProps {
-  filterItems: FilterItem[];
-  selectedFilterItems: FilterItem[];
-  onSelectFilterItem: (item: FilterItem) => void;
+interface SelectStepProps {
+  capturedImages: UploadedImage[];
+  selectedImage: UploadedImage | null;
+  onSelectImage: (image: UploadedImage) => void;
+  onTryOn: () => void;
+  onBack: () => void;
 }
 
-// This component is now a simple grid for displaying and selecting items.
-const ItemGrid: React.FC<ItemGridProps> = ({ filterItems, selectedFilterItems, onSelectFilterItem }) => {
+const SelectStep: React.FC<SelectStepProps> = ({
+  capturedImages,
+  selectedImage,
+  onSelectImage,
+  onTryOn,
+  onBack,
+}) => {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 min-h-[10rem]">
-      {filterItems.map((item) => {
-        const isSelected = selectedFilterItems.some(selected => selected.id === item.id);
-        return (
-          <div
-            key={item.id}
-            onClick={() => onSelectFilterItem(item)}
-            onKeyDown={(e) => e.key === 'Enter' && onSelectFilterItem(item)}
-            className={`relative group aspect-[3/4] cursor-pointer rounded-lg overflow-hidden border-4 transition-all duration-200 ${
-              isSelected ? 'border-pink-500 scale-105 shadow-lg' : 'border-transparent hover:border-pink-300'
-            }`}
-            role="button"
-            tabIndex={0}
-            aria-pressed={isSelected}
-            aria-label={`Select ${item.name}`}
-          >
-            <img src={item.image.url} alt={item.name} className="w-full h-full object-cover" />
-            {isSelected && (
-              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
+    <div className="bg-[#1f1f1f] p-6 rounded-lg shadow-lg">
+      <h2 className="text-2xl font-bold text-white mb-4 text-center">3. Select a Picture</h2>
+      
+      {capturedImages.length === 0 ? (
+        <div className="bg-black rounded-lg p-6 text-center text-gray-400 h-full flex flex-col justify-center min-h-[300px]">
+          <p>No pictures found.</p>
+          <p className="text-sm mt-1">Go back to add a photo.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto p-2 bg-black rounded-lg">
+          {capturedImages.map((image) => (
+            <div
+              key={image.url}
+              onClick={() => onSelectImage(image)}
+              className={`relative aspect-square cursor-pointer rounded-md overflow-hidden border-4 transition-all duration-200 ${
+                selectedImage?.url === image.url ? 'border-white scale-105 shadow-2xl' : 'border-transparent hover:border-gray-500'
+              }`}
+              role="button"
+              aria-pressed={selectedImage?.url === image.url}
+              aria-label={`Select image ${image.name}`}
+            >
+              <img src={image.url} alt={image.name} className="w-full h-full object-cover" />
+              {selectedImage?.url === image.url && (
+                <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
                   <CheckCircleIcon className="w-10 h-10 text-white opacity-90" />
-              </div>
-            )}
-            <div className="absolute bottom-0 left-0 right-0 p-1 bg-black bg-opacity-50">
-              <p className="text-white text-xs text-center truncate" title={item.name}>{item.name}</p>
+                </div>
+              )}
             </div>
-          </div>
-        )
-      })}
+          ))}
+        </div>
+      )}
+      
+      <div className="mt-6 flex flex-col sm:flex-row gap-4">
+        <button
+          onClick={onBack}
+          className="w-full sm:w-auto flex items-center justify-center py-3 px-6 border-2 border-white text-white font-bold rounded-lg hover:bg-white hover:text-black transition-colors"
+        >
+          <ArrowLeftIcon className="w-5 h-5 mr-2" />
+          Back
+        </button>
+        <button
+          onClick={onTryOn}
+          disabled={!selectedImage}
+          className="flex-grow flex items-center justify-center py-3 px-6 bg-white text-black font-bold text-xl rounded-lg shadow-md hover:bg-gray-200 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
+        >
+          <TryOnIcon className="w-7 h-7 mr-3" />
+          Try It On
+        </button>
+      </div>
     </div>
   );
 };
 
-export default ItemGrid;
+export default SelectStep;
